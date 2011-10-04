@@ -1,7 +1,7 @@
 <?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
 /**
  *
- * Name:     Authentic
+ * Name:            Authentic
  * Author:          Matthew Machuga
  * Location:        https://github.com/machuga/authentic/
  * Created:         April 26, 2011
@@ -11,70 +11,110 @@
  *
  */
 
-class User extends ActiveRecord\Model {
-    static $before_save = array('encrypt_password');
+class Authentic {
 
-    public static function authenticate($identity, $password, $return_user = false)
+    protected $_ci = null;
+    protected $_current_user_id = null;
+    protected $_current_user = null;
+    protected $_errors = array();
+    protected $_messages = array();
+
+    public function __construct()
     {
-        $user = static::find_user($identity);
-        if ($user && $user->password === static::hash_password($password, $user->salt))
-        {
-            return ($return_user) ? $user : true;
-        }
-        else 
-        {
-         return ($return_user) ? null : false;
-        }
+        $this->_ci = get_instance();
     }
 
-    protected static function identity_type($identity)
+    public function login($identity, $password, $remember = false, $return_user = false)
     {
-        if (is_numeric($identity))
+        $user = User::authenticate($identity, $password, true);
+        if ($user)
         {
-            return 'id';
+            $this->_ci->session->set_userdata('user_id', $user->id);
+            if ($remember)
+            {
+                // Set remember_code and new cookie
+            }
+            $this->add_message("You've been logged in successfully");
+            return ($return_user) ? $user : true; 
         }
         else
         {
-            return (strpos($identity, '@') !== false) ? 'email' : 'username';
+            $this->add_error("Invalid username or password");
+            return ($return_user) ? null : false;
         }
     }
 
-    public static function find_user($identity, $allow_id = false)
+    public function logout()
     {
-        $type = 'find_by_'.static::identity_type($identity);
-        return ($type === 'find_by_id' && ! $allow_id) ? false : static::$type($identity);
-    }
-
-
-    // Note: Will likely switch to SHA256 w/ hash()
-    protected function generate_salt($new = false)
-    {
-        if ( ! $this->salt || $new)
+        if ($this->_ci->session->userdata('user_id'))
         {
-            $this->salt = sha1('-'.time().'-');  
+            $this->_ci->session->unset_userdata('user_id');
+            $this->_current_user_id = null;
+            $this->_current_user = null;
+            $this->add_message("You've been logged out successfully");
         }
+
+        // Kill remember cookies and other data
+        return true;
     }
 
-    protected function hash_password($password, $salt)
+    public function logged_in()
     {
-        return sha1("-{$password}-{$salt}-");
+        return (bool) $this->current_user_id();
     }
 
-    /**
-     * 
-     * Callbacks
-     *
-     */
-
-    public function encrypt_password() 
+    public function current_user_id()
     {
-        if ($this->password) 
+        if ( ! $this->_current_user_id)
         {
-            $this->generate_salt();
-            $this->password = $this->hash_password($this->password, $this->salt);
+            if ($this->_ci->session->userdata('user_id'))
+            {
+                $this->_current_user_id = $this->_ci->session->userdata('user_id');
+            }
+        }
+        return $this->_current_user_id;
+    }
+
+    public function current_user()
+    {
+        if ( ! $this->_current_user)
+        {
+            if ($this->current_user_id())
+            {
+                $this->_current_user = User::find_by_id($this->current_user_id());
+            }
+        }
+        return $this->_current_user; 
+    }
+
+    public function add_error($error)
+    {
+        if (trim($error) != '')
+        {
+            $this->_errors[] = $error;
         }
     }
+    
+    public function add_message($msg)
+    {
+        if (trim($msg) != '')
+        {
+            $this->_message[] = $msg;
+        }
+    }
+
+    public function get_errors()
+    {
+        return $this->_errors;
+    }
+
+    public function get_messages()
+    {
+        return $this->_messages;
+    }
+
+
 }
+/* End of file Authority.php */
+/* Location: ./application/libraries/Authority.php */
 
-/* End of file User.php */
-/* Location: ./application/models/User.php */
